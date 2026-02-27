@@ -12,8 +12,13 @@ class User(db.Model):
     oauth_id = db.Column(db.String(255), nullable=True)
     name = db.Column(db.String(255), nullable=False)
     email = db.Column(db.String(255), unique=True, nullable=False)
-    role = db.Column(db.String(20), nullable=False, default="user", comment="user, admin")
-    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    profile_picture = db.Column(db.String(500), nullable=True)
+    role = db.Column(
+        db.String(20), nullable=False, default="user", comment="user, admin"
+    )
+    created_at = db.Column(
+        db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc)
+    )
     updated_at = db.Column(
         db.DateTime,
         nullable=False,

@@ -3,12 +3,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 class Config:
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
     JWT_ACCESS_TOKEN_EXPIRES = 300
     JWT_REFRESH_TOKEN_EXPIRES = 604800
+
+    # Google OAuth2
+    GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+    GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+    GOOGLE_DISCOVERY_URL = (
+        "https://accounts.google.com/.well-known/openid-configuration"
+    )
 
     # Port untuk menjalankan aplikasi
     PORT = os.getenv("GLOBAL_PORT")  # Default port

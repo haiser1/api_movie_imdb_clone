@@ -3,6 +3,7 @@ from flask import Flask, jsonify
 from config import Config
 from app.extensions import db
 from app.helper.logger import init_logger
+from app.helper.oauth_service import init_oauth
 from sqlalchemy.exc import OperationalError
 from sqlalchemy import text
 import time
@@ -15,6 +16,9 @@ def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
 
+    # Secret key required for OAuth session
+    app.secret_key = app.config.get("JWT_SECRET_KEY", "fallback-secret-key")
+
     # Initialize extensions
     db.init_app(app)
     Migrate(app, db)
@@ -22,6 +26,9 @@ def create_app():
     # Initialize logger with app config
     init_logger(app)
     from app.helper.logger import json_logger
+
+    # Initialize OAuth
+    init_oauth(app)
 
     with app.app_context():
         for i in range(3):
@@ -124,5 +131,9 @@ def create_app():
             }
         ), 500
 
+    # Register blueprints
+    from app.routes.auth import auth_bp
+
+    app.register_blueprint(auth_bp)
 
     return app
