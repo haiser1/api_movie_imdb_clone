@@ -132,7 +132,7 @@ def create_app():
         ), 500
 
     # Register blueprints
-    from app.routes.auth import auth_bp
+    from app.routes.auth_route import auth_bp
 
     app.register_blueprint(auth_bp)
 

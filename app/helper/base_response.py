@@ -1,21 +1,23 @@
+from typing import Any, Optional
+
 from flask import jsonify
 
 
-def response_success(message: str, data: dict, status_code: int = 200):
-    return jsonify(
-        {
-            "success": True,
-            "message": message,
-            "data": data,
-        }
-    ), status_code
+def response_success(message: str, data: Optional[dict] = None, status_code: int = 200):
+    body = {
+        "success": True,
+        "message": message,
+    }
+    if data is not None:
+        body["data"] = data
+    return jsonify(body), status_code
 
 
-def response_error(message: str, error: any, status_code: int = 400):
-    return jsonify(
-        {
-            "success": False,
-            "message": message,
-            "error": error,
-        }
-    ), status_code
+def response_error(message: str, error: Any = None, status_code: int = 400):
+    body = {
+        "success": False,
+        "message": message,
+    }
+    if error is not None:
+        body["error"] = error
+    return jsonify(body), status_code

@@ -1,8 +1,9 @@
 from functools import wraps
 
 import jwt
-from flask import request, jsonify, g
+from flask import request, g
 
+from app.helper.base_response import response_error
 from app.helper.jwt_handler import decode_token
 from app.helper.logger import json_logger
 from app.models.user import User
@@ -26,13 +27,11 @@ def jwt_required(f):
 
         if not auth_header or not auth_header.startswith("Bearer "):
             json_logger.warning("Missing or invalid Authorization header")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Unauthorized",
-                    "error": "Missing or invalid Authorization header",
-                }
-            ), 401
+            return response_error(
+                message="Unauthorized",
+                error="Missing or invalid Authorization header",
+                status_code=401,
+            )
 
         token = auth_header.split(" ")[1]
 
@@ -40,43 +39,35 @@ def jwt_required(f):
             payload = decode_token(token)
         except jwt.ExpiredSignatureError:
             json_logger.warning("Access token has expired")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Unauthorized",
-                    "error": "Token has expired",
-                }
-            ), 401
+            return response_error(
+                message="Unauthorized",
+                error="Token has expired",
+                status_code=401,
+            )
         except jwt.InvalidTokenError as e:
             json_logger.warning(f"Invalid token: {str(e)}")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Unauthorized",
-                    "error": "Invalid token",
-                }
-            ), 401
+            return response_error(
+                message="Unauthorized",
+                error="Invalid token",
+                status_code=401,
+            )
 
         if payload.get("type") != "access":
             json_logger.warning("Token is not an access token")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Unauthorized",
-                    "error": "Invalid token type",
-                }
-            ), 401
+            return response_error(
+                message="Unauthorized",
+                error="Invalid token type",
+                status_code=401,
+            )
 
         user = User.query.get(payload["sub"])
         if not user:
             json_logger.warning(f"User not found for token sub: {payload['sub']}")
-            return jsonify(
-                {
-                    "success": False,
-                    "message": "Unauthorized",
-                    "error": "User not found",
-                }
-            ), 401
+            return response_error(
+                message="Unauthorized",
+                error="User not found",
+                status_code=401,
+            )
 
         g.current_user = user
         return f(*args, **kwargs)

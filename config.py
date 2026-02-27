@@ -18,6 +18,9 @@ class Config:
         "https://accounts.google.com/.well-known/openid-configuration"
     )
 
+    TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+    TMDB_ACCESS_TOKEN = os.getenv("TMDB_ACCESS_TOKEN")
+
     # Port untuk menjalankan aplikasi
     PORT = os.getenv("GLOBAL_PORT")  # Default port
     SQLALCHEMY_ENGINE_OPTIONS = {
