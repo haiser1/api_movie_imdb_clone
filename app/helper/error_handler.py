@@ -66,7 +66,7 @@ def handle_errors(f):
                 status_code=e.status_code,
             )
         except Exception as e:
-            json_logger.error(f"Unexpected error: {str(e)}")
+            json_logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return response_error(
                 message="Internal server error",
                 error=str(e),

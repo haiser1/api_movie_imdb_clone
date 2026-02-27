@@ -78,3 +78,12 @@ db-seed:
 db-revision:
 	@echo "▶ Create revision..."
 	FLASK_APP=$(FLASK_APP) $(PYTHON) -m flask db revision -m "$(MSG)"
+
+
+# test
+.PHONY: test
+
+# running all tests
+test:
+	@echo "▶ Running tests..."
+	$(PYTHON) -m pytest tests/ -v

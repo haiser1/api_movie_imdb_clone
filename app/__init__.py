@@ -10,6 +10,9 @@ import time
 import uuid
 from flask_migrate import Migrate
 from app.models import *  # noqa: F403
+from app.routes import register_routes
+from flask_swagger_ui import get_swaggerui_blueprint
+import os
 
 
 def create_app():
@@ -131,9 +134,25 @@ def create_app():
             }
         ), 500
 
-    # Register blueprints
-    from app.routes.auth_route import auth_bp
+    register_routes(app)
 
-    app.register_blueprint(auth_bp)
+    # Swagger UI
+
+    SWAGGER_URL = "/api/docs"
+    API_SPEC_URL = "/api/spec/openapi.yaml"
+
+    swaggerui_blueprint = get_swaggerui_blueprint(
+        SWAGGER_URL,
+        API_SPEC_URL,
+        config={"app_name": "Movie Web App API"},
+    )
+    app.register_blueprint(swaggerui_blueprint, url_prefix=SWAGGER_URL)
+
+    @app.route(API_SPEC_URL)
+    def serve_openapi_spec():
+        docs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs")
+        from flask import send_from_directory
+
+        return send_from_directory(docs_dir, "openapi.yaml")
 
     return app

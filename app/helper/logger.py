@@ -60,8 +60,7 @@ class JsonLoggerAdapter(logging.LoggerAdapter):
         return msg, kwargs
 
 
-
-json_logger = None
+json_logger = JsonLoggerAdapter(logging.getLogger("gunicorn.error"), {})
 
 
 def init_logger(app=None):

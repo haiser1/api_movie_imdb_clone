@@ -1,0 +1,1379 @@
+openapi: 3.0.3
+info:
+  title: Movie Web App API
+  description: |
+    REST API untuk Movie Web App.
+
+    ## Autentikasi
+    Menggunakan **Google OAuth2** untuk login dan **JWT Bearer Token** untuk akses endpoint yang memerlukan autentikasi.
+
+    ## Roles
+    - **guest** — Akses publik tanpa login
+    - **user** — User yang sudah login via Google OAuth
+    - **admin** — Administrator dengan akses penuh
+  version: 1.0.0
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:5000
+    description: Local development
+
+tags:
+  - name: Auth
+    description: Authentication & authorization (Google OAuth2 + JWT)
+  - name: Movies
+    description: Movie browsing, search, and filtering (public)
+  - name: User Movies
+    description: User-created movies management (authenticated)
+  - name: Wishlist
+    description: User's movie wishlist (authenticated)
+  - name: Admin Movies
+    description: Admin movie management
+  - name: Admin Sync
+    description: TMDB sync management (admin only)
+  - name: Admin Dashboard
+    description: Analytics dashboard (admin only)
+  - name: Genres
+    description: Movie genres
+  - name: Health
+    description: Application health check
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT access token obtained from Google OAuth login
+
+  schemas:
+    # --- Base Response ---
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+      required: [success, message]
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+        error:
+          type: string
+      required: [success, message]
+
+    # --- Auth ---
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        token_type:
+          type: string
+          example: Bearer
+        expires_in:
+          type: integer
+          description: Access token expiration time in seconds
+          example: 300
+      required: [access_token, refresh_token, token_type, expires_in]
+
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+      required: [refresh_token]
+
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, admin]
+        profile_picture:
+          type: string
+          nullable: true
+        oauth_provider:
+          type: string
+          nullable: true
+      required: [id, name, email, role]
+
+    # --- Genre ---
+    Genre:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+      required: [id, name]
+
+    # --- Movie Image ---
+    MovieImage:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        image_type:
+          type: string
+          enum: [poster, backdrop]
+        image_url:
+          type: string
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+
+    # --- Movie Video ---
+    MovieVideo:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        video_type:
+          type: string
+          enum: [trailer, teaser]
+        site:
+          type: string
+          enum: [youtube, vimeo]
+        video_key:
+          type: string
+        official:
+          type: boolean
+
+    # --- Movie ---
+    Movie:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        api_id:
+          type: string
+          nullable: true
+          description: TMDB API ID (null if user-created)
+        source:
+          type: string
+          enum: [tmdb, user]
+        title:
+          type: string
+        overview:
+          type: string
+          nullable: true
+        release_date:
+          type: string
+          format: date
+          nullable: true
+        popularity:
+          type: number
+          format: float
+          nullable: true
+        rating:
+          type: number
+          format: float
+          nullable: true
+        is_featured:
+          type: boolean
+        status:
+          type: string
+          enum: [active, archived]
+        created_by:
+          type: string
+          format: uuid
+          nullable: true
+        genres:
+          type: array
+          items:
+            $ref: "#/components/schemas/Genre"
+        images:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovieImage"
+        videos:
+          type: array
+          items:
+            $ref: "#/components/schemas/MovieVideo"
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, source, title, status, created_at, updated_at]
+
+    MovieCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        overview:
+          type: string
+        release_date:
+          type: string
+          format: date
+        genre_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: List of genre UUIDs
+      required: [title]
+
+    MovieUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        overview:
+          type: string
+        release_date:
+          type: string
+          format: date
+        genre_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    AdminMovieCreateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        overview:
+          type: string
+        release_date:
+          type: string
+          format: date
+        popularity:
+          type: number
+          format: float
+        rating:
+          type: number
+          format: float
+        is_featured:
+          type: boolean
+        status:
+          type: string
+          enum: [active, archived]
+        genre_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+      required: [title]
+
+    AdminMovieUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        overview:
+          type: string
+        release_date:
+          type: string
+          format: date
+        popularity:
+          type: number
+          format: float
+        rating:
+          type: number
+          format: float
+        is_featured:
+          type: boolean
+        status:
+          type: string
+          enum: [active, archived]
+        genre_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    # --- Wishlist ---
+    Wishlist:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        movie_id:
+          type: string
+          format: uuid
+        movie:
+          $ref: "#/components/schemas/Movie"
+        scheduled_watch_date:
+          type: string
+          format: date
+          nullable: true
+        reminder_sent:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+      required: [id, movie_id, created_at]
+
+    WishlistCreateRequest:
+      type: object
+      properties:
+        movie_id:
+          type: string
+          format: uuid
+        scheduled_watch_date:
+          type: string
+          format: date
+      required: [movie_id]
+
+    WishlistUpdateRequest:
+      type: object
+      properties:
+        scheduled_watch_date:
+          type: string
+          format: date
+
+    # --- Admin Dashboard ---
+    DashboardAnalytics:
+      type: object
+      properties:
+        total_movies:
+          type: integer
+        total_users:
+          type: integer
+        total_wishlists:
+          type: integer
+        movies_by_source:
+          type: object
+          properties:
+            tmdb:
+              type: integer
+            user:
+              type: integer
+        popular_genres:
+          type: array
+          items:
+            type: object
+            properties:
+              genre:
+                type: string
+              count:
+                type: integer
+
+    # --- Sync ---
+    SyncLog:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        last_sync_at:
+          type: string
+          format: date-time
+        total_inserted:
+          type: integer
+        total_updated:
+          type: integer
+        status:
+          type: string
+          enum: [success, failed]
+        created_at:
+          type: string
+          format: date-time
+      required: [id, last_sync_at, status, created_at]
+
+    # --- Pagination ---
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          example: 1
+        per_page:
+          type: integer
+          example: 20
+        total:
+          type: integer
+        total_pages:
+          type: integer
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+        minimum: 1
+      description: Page number
+
+    PerPageParam:
+      name: per_page
+      in: query
+      schema:
+        type: integer
+        default: 20
+        minimum: 1
+        maximum: 100
+      description: Items per page
+
+    SortParam:
+      name: sort
+      in: query
+      schema:
+        type: string
+        enum: [title, release_date, popularity, rating, created_at]
+        default: created_at
+      description: Field to sort by
+
+    OrderParam:
+      name: order
+      in: query
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
+      description: Sort order
+
+paths:
+  # ==================== HEALTH ====================
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Application is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  database:
+                    type: string
+                    example: connected
+                  timestamp:
+                    type: number
+        "503":
+          description: Application is degraded
+
+  # ==================== AUTH ====================
+  /api/auth/google/login:
+    get:
+      tags: [Auth]
+      summary: Initiate Google OAuth2 login
+      operationId: googleLogin
+      description: Redirects to Google OAuth consent screen. After authorization, Google redirects to callback URL.
+      responses:
+        "302":
+          description: Redirect to Google OAuth consent page
+
+  /api/auth/google/callback:
+    get:
+      tags: [Auth]
+      summary: Google OAuth2 callback
+      operationId: googleCallback
+      description: Handles the OAuth2 callback from Google. Exchanges auth code for tokens, creates/updates user, returns JWT tokens.
+      responses:
+        "200":
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      operationId: refreshToken
+      description: Exchange a valid refresh token for a new access token pair.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TokenResponse"
+        "401":
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current user profile
+      operationId: getCurrentUser
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: User profile retrieved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserProfile"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      operationId: logout
+      description: |
+        Logout endpoint. Since JWT is stateless, actual token invalidation
+        requires a token blacklist (e.g. Redis). Client should discard tokens.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== MOVIES (PUBLIC) ====================
+  /api/movies:
+    get:
+      tags: [Movies]
+      summary: List all movies
+      operationId: listMovies
+      description: |
+        Browse movies with support for search, filtering, sorting, and pagination.
+        Accessible by anyone without authentication.
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by movie title (partial match)
+        - name: genre_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter by genre UUID
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [tmdb, user]
+          description: Filter by movie source
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+            default: active
+          description: Filter by status
+        - name: release_date_from
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter movies released on or after this date
+        - name: release_date_to
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Filter movies released on or before this date
+        - $ref: "#/components/parameters/SortParam"
+        - $ref: "#/components/parameters/OrderParam"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: List of movies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Movie"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+
+  /api/movies/popular:
+    get:
+      tags: [Movies]
+      summary: Get popular movies
+      operationId: getPopularMovies
+      description: Returns movies sorted by popularity (descending).
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: Popular movies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Movie"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+
+  /api/movies/{id}:
+    get:
+      tags: [Movies]
+      summary: Get movie detail
+      operationId: getMovieDetail
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Movie detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Movie"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== USER MOVIES ====================
+  /api/movies/me:
+    get:
+      tags: [User Movies]
+      summary: List current user's movies
+      operationId: listMyMovies
+      description: Returns all movies created by the authenticated user.
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: User's movies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Movie"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/movies/user:
+    post:
+      tags: [User Movies]
+      summary: Create a movie
+      operationId: createUserMovie
+      description: Create a new movie entry. The movie will be tagged with `source=user` and `created_by` set to the current user.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovieCreateRequest"
+      responses:
+        "201":
+          description: Movie created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Movie"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/movies/user/{id}:
+    put:
+      tags: [User Movies]
+      summary: Update own movie
+      operationId: updateUserMovie
+      description: Update a movie owned by the current user. Cannot update movies from TMDB or other users.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MovieUpdateRequest"
+      responses:
+        "200":
+          description: Movie updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Movie"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — not the movie owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [User Movies]
+      summary: Delete own movie
+      operationId: deleteUserMovie
+      description: Soft-delete a movie owned by the current user.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Movie deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — not the movie owner
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== WISHLIST ====================
+  /api/wishlists:
+    get:
+      tags: [Wishlist]
+      summary: List user's wishlist
+      operationId: listWishlists
+      security:
+        - BearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: Wishlist items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Wishlist"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Wishlist]
+      summary: Add movie to wishlist
+      operationId: createWishlist
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WishlistCreateRequest"
+      responses:
+        "201":
+          description: Added to wishlist
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Wishlist"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Movie already in wishlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/wishlists/{id}:
+    put:
+      tags: [Wishlist]
+      summary: Update wishlist item
+      operationId: updateWishlist
+      description: Update scheduled watch date for a wishlist item.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WishlistUpdateRequest"
+      responses:
+        "200":
+          description: Wishlist updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Wishlist"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Wishlist item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Wishlist]
+      summary: Remove from wishlist
+      operationId: deleteWishlist
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Removed from wishlist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Wishlist item not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== GENRES ====================
+  /api/genres:
+    get:
+      tags: [Genres]
+      summary: List all genres
+      operationId: listGenres
+      responses:
+        "200":
+          description: List of genres
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Genre"
+
+  # ==================== ADMIN DASHBOARD ====================
+  /api/admin/dashboard:
+    get:
+      tags: [Admin Dashboard]
+      summary: Get analytics dashboard
+      operationId: getAdminDashboard
+      description: Returns aggregate analytics including total movies, users, wishlists, movies by source, and top genres.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Dashboard analytics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/DashboardAnalytics"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== ADMIN MOVIES ====================
+  /api/admin/movies:
+    get:
+      tags: [Admin Movies]
+      summary: List all movies (admin)
+      operationId: listAdminMovies
+      description: List all movies including archived. Admin can see all sources.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+            enum: [tmdb, user]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+        - $ref: "#/components/parameters/SortParam"
+        - $ref: "#/components/parameters/OrderParam"
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: All movies
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Movie"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Admin Movies]
+      summary: Create movie (admin)
+      operationId: createAdminMovie
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminMovieCreateRequest"
+      responses:
+        "201":
+          description: Movie created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Movie"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/movies/{id}:
+    put:
+      tags: [Admin Movies]
+      summary: Update movie (admin)
+      operationId: updateAdminMovie
+      description: Admin can update any movie regardless of source or ownership.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminMovieUpdateRequest"
+      responses:
+        "200":
+          description: Movie updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/Movie"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Admin Movies]
+      summary: Delete movie (admin)
+      operationId: deleteAdminMovie
+      description: Soft-delete any movie. Admin can delete movies from any source.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Movie deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Movie not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== ADMIN SYNC ====================
+  /api/admin/sync/tmdb:
+    post:
+      tags: [Admin Sync]
+      summary: Trigger TMDB sync
+      operationId: triggerTmdbSync
+      description: |
+        Trigger a sync with TMDB API. Fetches popular/trending movies,
+        inserts new movies, and updates existing ones.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Sync completed
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SyncLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Sync failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/sync/status:
+    get:
+      tags: [Admin Sync]
+      summary: Get last sync status
+      operationId: getSyncStatus
+      description: Returns the most recent TMDB sync log entry.
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: Last sync status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/SyncLog"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"

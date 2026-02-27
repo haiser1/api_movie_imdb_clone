@@ -5,7 +5,7 @@ from flask import request, g
 
 from app.helper.base_response import response_error
 from app.helper.jwt_handler import decode_token
-from app.helper.logger import json_logger
+from app.helper import logger as app_logger
 from app.models.user import User
 
 
@@ -26,7 +26,7 @@ def jwt_required(f):
         auth_header = request.headers.get("Authorization")
 
         if not auth_header or not auth_header.startswith("Bearer "):
-            json_logger.warning("Missing or invalid Authorization header")
+            app_logger.json_logger.warning("Missing or invalid Authorization header")
             return response_error(
                 message="Unauthorized",
                 error="Missing or invalid Authorization header",
@@ -38,14 +38,14 @@ def jwt_required(f):
         try:
             payload = decode_token(token)
         except jwt.ExpiredSignatureError:
-            json_logger.warning("Access token has expired")
+            app_logger.json_logger.warning("Access token has expired")
             return response_error(
                 message="Unauthorized",
                 error="Token has expired",
                 status_code=401,
             )
         except jwt.InvalidTokenError as e:
-            json_logger.warning(f"Invalid token: {str(e)}")
+            app_logger.json_logger.warning(f"Invalid token: {str(e)}")
             return response_error(
                 message="Unauthorized",
                 error="Invalid token",
@@ -53,7 +53,7 @@ def jwt_required(f):
             )
 
         if payload.get("type") != "access":
-            json_logger.warning("Token is not an access token")
+            app_logger.json_logger.warning("Token is not an access token")
             return response_error(
                 message="Unauthorized",
                 error="Invalid token type",
@@ -62,7 +62,9 @@ def jwt_required(f):
 
         user = User.query.get(payload["sub"])
         if not user:
-            json_logger.warning(f"User not found for token sub: {payload['sub']}")
+            app_logger.json_logger.warning(
+                f"User not found for token sub: {payload['sub']}"
+            )
             return response_error(
                 message="Unauthorized",
                 error="User not found",
