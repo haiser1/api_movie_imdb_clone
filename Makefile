@@ -73,7 +73,7 @@ db-current:
 
 db-seed:
 	@echo "▶ Seeding data..."
-	FLASK_APP=$(FLASK_APP) $(PYTHON) -m flask seed-data
+	FLASK_APP=$(FLASK_APP) $(PYTHON) -m flask seed-users
 
 db-revision:
 	@echo "▶ Create revision..."

@@ -155,4 +155,9 @@ def create_app():
 
         return send_from_directory(docs_dir, "openapi.yaml")
 
+    # CLI commands
+    from app.cli import register_cli
+
+    register_cli(app)
+
     return app
