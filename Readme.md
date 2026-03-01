@@ -53,17 +53,26 @@ cp .env.example .env
 ### Linux
 
 ```bash
-# 3. One-command init (venv + deps + db + migrate + seed)
+# One-command init (venv + deps + db + migrate + seed)
 make init-project
 
-# 4. Run
+# Run
 make run
+
+# Run with docker
+make run-docker
+
+# Docker logs
+make docker-logs
+
+# Stop
+make docker-down
 ```
 
 ### Windows
 
 ```bash
-# create a vi   rtual environment
+# create a virtual environment
 python -m venv venv
 
 # activate the virtual environment
@@ -75,9 +84,32 @@ pip install -r requirements.txt
 # create database
 python scripts/create_db.py
 
+# migrate
+flask db upgrade
+
+# seed
+flask seed-users
+
 # run the app
 flask run
 ```
+
+### Docker
+
+```bash
+# Run with docker
+docker compose up -d --build
+
+# Docker logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Stop and remove volumes
+docker compose down -v --remove-orphans
+```
+
 
 App runs at `http://localhost:5000`
 
@@ -86,27 +118,6 @@ App runs at `http://localhost:5000`
 ## Environment Variables
 
 Create a `.env` file in the project root:
-
-```env
-# Database
-DATABASE_URL=postgresql+psycopg://user:password@localhost:5432/imdb_clone
-
-# JWT
-JWT_SECRET_KEY=your-secret-key
-
-# Google OAuth2
-GOOGLE_CLIENT_ID=your-google-client-id
-GOOGLE_CLIENT_SECRET=your-google-client-secret
-
-# TMDB
-TMDB_ACCESS_TOKEN=your-tmdb-access-token
-TMDB_BASE_URL=https://api.themoviedb.org/3
-TMDB_IMAGE_BASE=https://image.tmdb.org/t/p
-
-# App
-GLOBAL_PORT=5000
-LOG_LEVEL=INFO
-```
 
 ---
 
@@ -244,6 +255,10 @@ curl /api/admin/sync/status -H "Authorization: Bearer <token>"
 | `make db-history` | Migration history |
 | `make db-seed` | Seed default users |
 | `make test` | Run pytest |
+| `make docker-up` | Start containers (build + up) |
+| `make docker-down` | Stop and remove containers |
+| `make docker-logs` | Tail container logs |
+| `make docker-clean` | Remove containers + volumes |
 
 ---
 
@@ -320,6 +335,24 @@ erDiagram
 
 ## Deployment
 
+### Docker
+
+```bash
+# Start everything (PostgreSQL + Flask app)
+docker compose up -d --build
+
+# View logs
+docker compose logs -f app
+
+# Stop
+docker compose down
+
+# Stop + remove data
+docker compose down -v
+```
+
+The app auto-runs migrations and seeds on startup.
+
 ### Vercel
 
 ```bash
@@ -332,4 +365,4 @@ The project includes `vercel.json` configured for serverless deployment.
 
 ## License
 
-This project is for educational and technical assessment purposes.
+This project is licensed under the [MIT License](LICENSE).

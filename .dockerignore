@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.git/
+.gitignore
+.env
+.env_example
+Readme.md
+docs/
+tests/
+migrations/versions/__pycache__/

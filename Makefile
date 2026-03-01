@@ -87,3 +87,28 @@ db-revision:
 test:
 	@echo "▶ Running tests..."
 	$(PYTHON) -m pytest tests/ -v
+
+# ========================
+# Docker
+# ========================
+.PHONY: docker-up docker-down docker-logs docker-clean docker-ps
+
+docker-up:
+	@echo "▶ Starting containers..."
+	docker compose up -d --build
+
+docker-down:
+	@echo "▶ Stopping containers..."
+	docker compose down
+
+docker-logs:
+	@echo "▶ Tailing logs..."
+	docker compose logs -f
+
+docker-clean:
+	@echo "▶ Removing containers and volumes..."
+	docker compose down -v --remove-orphans
+
+docker-ps:
+	@echo "▶ Container status..."
+	docker compose ps
