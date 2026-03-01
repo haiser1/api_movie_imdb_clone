@@ -6,7 +6,6 @@ from flask import request, g
 from app.helper.base_response import response_error
 from app.helper.jwt_handler import decode_token
 from app.helper import logger as app_logger
-from app.models.user import User
 
 
 def jwt_required(f):
@@ -60,18 +59,32 @@ def jwt_required(f):
                 status_code=401,
             )
 
-        user = User.query.get(payload["sub"])
-        if not user:
+        g.current_user = payload
+        return f(*args, **kwargs)
+
+    return decorated
+
+
+def admin_required(f):
+    """
+    Decorator that enforces admin role.
+
+    Must be used alongside @jwt_required (applied first).
+    Checks g.current_user.role == 'admin' and returns 403 if not.
+    """
+
+    @wraps(f)
+    @jwt_required
+    def decorated(*args, **kwargs):
+        if g.current_user.get("role") != "admin":
             app_logger.json_logger.warning(
-                f"User not found for token sub: {payload['sub']}"
+                f"Admin access denied for user: {g.current_user.get('sub')}"
             )
             return response_error(
-                message="Unauthorized",
-                error="User not found",
-                status_code=401,
+                message="Forbidden",
+                error="Admin access required",
+                status_code=403,
             )
-
-        g.current_user = user
         return f(*args, **kwargs)
 
     return decorated

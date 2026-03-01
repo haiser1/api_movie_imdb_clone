@@ -2,15 +2,15 @@ openapi: 3.0.3
 info:
   title: Movie Web App API
   description: |
-    REST API untuk Movie Web App.
+    REST API for Movie Web App.
 
-    ## Autentikasi
-    Menggunakan **Google OAuth2** untuk login dan **JWT Bearer Token** untuk akses endpoint yang memerlukan autentikasi.
+    ## Authentication
+    Using **Google OAuth2** for login and **JWT Bearer Token** for accessing endpoints that require authentication.
 
     ## Roles
-    - **guest** — Akses publik tanpa login
-    - **user** — User yang sudah login via Google OAuth
-    - **admin** — Administrator dengan akses penuh
+    - **guest** — Public access without authentication
+    - **user** — User that has logged in via Google OAuth
+    - **admin** — Administrator with full access
   version: 1.0.0
   contact:
     name: API Support
@@ -18,6 +18,8 @@ info:
 servers:
   - url: http://localhost:5000
     description: Local development
+  - url: https://movie-ku-api.vercel.app
+    description: Production
 
 tags:
   - name: Auth
@@ -635,7 +637,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [tmdb, user]
+            enum: [tmdb, user, admin]
           description: Filter by movie source
         - name: status
           in: query
@@ -1129,7 +1131,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [tmdb, user]
+            enum: [tmdb, user, admin]
         - name: status
           in: query
           schema:
@@ -1304,19 +1306,93 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
 
   # ==================== ADMIN SYNC ====================
-  /api/admin/sync/tmdb:
+  /api/admin/sync/movies:
     post:
       tags: [Admin Sync]
-      summary: Trigger TMDB sync
-      operationId: triggerTmdbSync
+      summary: Trigger movie sync from TMDB
+      operationId: triggerMoviesSync
       description: |
-        Trigger a sync with TMDB API. Fetches popular/trending movies,
-        inserts new movies, and updates existing ones.
+        Start a background sync with TMDB API. Supports two modes:
+        - `full` (default): Sync all movies from popular + now_playing endpoints
+        - `changes`: Incremental sync — only movies changed in the last 14 days
+
+        The sync runs asynchronously. Use GET /sync/status to monitor progress.
+        Returns 409 if a sync is already running.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: mode
+          in: query
+          schema:
+            type: string
+            enum: [full, changes]
+            default: full
+          description: |
+            Sync mode. `full` syncs all available pages from TMDB list endpoints.
+            `changes` uses TMDB /movie/changes API (last 14 days).
+        - name: resume
+          in: query
+          schema:
+            type: string
+            enum: ["true", "false"]
+            default: "false"
+          description: |
+            Resume from last failed sync position. Only applies to `full` mode.
+      responses:
+        "202":
+          description: Sync started in background
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message:
+                            type: string
+                            example: "Movies sync started in background"
+                          type:
+                            type: string
+                            enum: [movies, changes]
+                          started_at:
+                            type: string
+                            format: date-time
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: A sync is already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /api/admin/sync/status:
+    get:
+      tags: [Admin Sync]
+      summary: Get live sync status
+      operationId: getSyncStatus
+      description: |
+        Returns the current sync status. If a sync is running, returns live
+        in-memory progress (processed count, current endpoint/page). Otherwise,
+        returns the most recent SyncLog from the database.
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Sync completed
+          description: Current sync status
           content:
             application/json:
               schema:
@@ -1338,24 +1414,21 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-        "500":
-          description: Sync failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
 
-  /api/admin/sync/status:
+  /api/admin/sync/last-sync:
     get:
       tags: [Admin Sync]
-      summary: Get last sync status
-      operationId: getSyncStatus
-      description: Returns the most recent TMDB sync log entry.
+      summary: Get last completed sync log
+      operationId: getLastSync
+      description: |
+        Returns the most recent completed sync log entry from the database.
+        Unlike /sync/status, this always returns the DB record regardless of
+        whether a sync is currently running.
       security:
         - BearerAuth: []
       responses:
         "200":
-          description: Last sync status
+          description: Last sync log
           content:
             application/json:
               schema:

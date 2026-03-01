@@ -37,6 +37,20 @@ class BadRequestError(AppError):
         super().__init__(message=message, error=error or message, status_code=400)
 
 
+class ForbiddenError(AppError):
+    """Forbidden error (403)."""
+
+    def __init__(self, message: str = "Forbidden", error: str = None):
+        super().__init__(message=message, error=error or message, status_code=403)
+
+
+class ConflictError(AppError):
+    """Conflict error (409)."""
+
+    def __init__(self, message: str = "Conflict", error: str = None):
+        super().__init__(message=message, error=error or message, status_code=409)
+
+
 def handle_errors(f):
     """
     Decorator that catches exceptions and returns standardized error responses.
@@ -52,12 +66,19 @@ def handle_errors(f):
         try:
             return f(*args, **kwargs)
         except ValidationError as e:
-            json_logger.warning(f"Validation error: {str(e)}")
+            error_details = []
+            for error in e.errors():
+                error_details.append(
+                    {
+                        "field": ".".join(str(x) for x in error["loc"]),
+                        "msg": error["msg"],
+                        "type": error["type"],
+                    }
+                )
             return response_error(
-                message="Validation error",
-                error=str(e),
-                status_code=422,
+                message="Validation Error", status_code=400, error=error_details
             )
+
         except AppError as e:
             json_logger.warning(f"{e.message}: {e.error}")
             return response_error(
@@ -69,7 +90,6 @@ def handle_errors(f):
             json_logger.error(f"Unexpected error: {str(e)}", exc_info=True)
             return response_error(
                 message="Internal server error",
-                error=str(e),
                 status_code=500,
             )
 

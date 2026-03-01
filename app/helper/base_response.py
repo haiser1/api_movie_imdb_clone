@@ -3,13 +3,20 @@ from typing import Any, Optional
 from flask import jsonify
 
 
-def response_success(message: str, data: Optional[dict] = None, status_code: int = 200):
+def response_success(
+    message: str,
+    data: Optional[Any] = None,
+    meta: Optional[dict] = None,
+    status_code: int = 200,
+):
     body = {
         "success": True,
         "message": message,
     }
     if data is not None:
         body["data"] = data
+    if meta is not None:
+        body["meta"] = meta
     return jsonify(body), status_code
 
 

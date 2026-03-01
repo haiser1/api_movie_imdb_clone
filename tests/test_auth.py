@@ -12,7 +12,7 @@ class TestRefreshToken:
     def test_refresh_token_missing_body(self, client):
         """Should return 422 when request body is missing."""
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({}),
         )
@@ -24,7 +24,7 @@ class TestRefreshToken:
     def test_refresh_token_invalid_token(self, client):
         """Should return 401 when refresh token is invalid."""
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({"refresh_token": "invalid-token"}),
         )
@@ -48,7 +48,7 @@ class TestRefreshToken:
         )
 
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({"refresh_token": expired_token}),
         )
@@ -71,7 +71,7 @@ class TestRefreshToken:
         )
 
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({"refresh_token": access_token}),
         )
@@ -92,7 +92,7 @@ class TestRefreshToken:
         token = pyjwt.encode(payload, app.config["JWT_SECRET_KEY"], algorithm="HS256")
 
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({"refresh_token": token}),
         )
@@ -108,7 +108,7 @@ class TestRefreshToken:
             refresh_token = create_refresh_token(mock_user.id)
 
         response = client.post(
-            "/refresh",
+            "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({"refresh_token": refresh_token}),
         )
@@ -127,7 +127,7 @@ class TestGetCurrentUser:
 
     def test_me_no_auth(self, client):
         """Should return 401 when no Authorization header."""
-        response = client.get("/me")
+        response = client.get("/api/auth/me")
         assert response.status_code == 401
         data = response.get_json()
         assert data["success"] is False
@@ -136,14 +136,14 @@ class TestGetCurrentUser:
     def test_me_invalid_token(self, client):
         """Should return 401 when token is invalid."""
         response = client.get(
-            "/me",
+            "/api/auth/me",
             headers={"Authorization": "Bearer invalid-token"},
         )
         assert response.status_code == 401
 
     def test_me_success(self, client, auth_headers, mock_user):
         """Should return 200 with user profile when authenticated."""
-        response = client.get("/me", headers=auth_headers)
+        response = client.get("/api/auth/me", headers=auth_headers)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
@@ -158,12 +158,12 @@ class TestLogout:
 
     def test_logout_no_auth(self, client):
         """Should return 401 when not authenticated."""
-        response = client.post("/logout")
+        response = client.post("/api/auth/logout")
         assert response.status_code == 401
 
     def test_logout_success(self, client, auth_headers):
         """Should return 200 when authenticated."""
-        response = client.post("/logout", headers=auth_headers)
+        response = client.post("/api/auth/logout", headers=auth_headers)
         assert response.status_code == 200
         data = response.get_json()
         assert data["success"] is True
