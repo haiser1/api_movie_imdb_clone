@@ -102,28 +102,31 @@ def refresh_token_service(body: RefreshTokenRequestSchema) -> dict:
     return _generate_token_response(user)
 
 
-def get_current_user_service(user: User) -> dict:
+def get_current_user_service(payload: dict) -> dict:
     """
     Serialize the current user's profile data.
 
     Args:
-        user: The authenticated User model instance.
+        payload: JWT payload dict with sub, role, name, email.
 
     Returns:
         dict with serialized user profile.
     """
+    user = User.query.get(payload["sub"])
+    if not user:
+        raise Exception("User not found")
     response = UserResponseSchema.model_validate(user)
     return response.model_dump(mode="json")
 
 
-def logout_service(user: User) -> None:
+def logout_service(payload: dict) -> None:
     """
     Handle user logout (logging only, JWT is stateless).
 
     Args:
-        user: The authenticated User model instance.
+        payload: JWT payload dict.
     """
-    json_logger.info(f"User {user.email} logged out")
+    json_logger.info(f"User {payload.get('email')} logged out")
 
 
 # --- Private helpers ---
@@ -159,7 +162,7 @@ def _find_or_create_user(user_info: dict) -> User:
 
 def _generate_token_response(user: User) -> dict:
     """Generate JWT access + refresh tokens and return as dict."""
-    access_token = create_access_token(user.id, user.role)
+    access_token = create_access_token(user.id, user.role, user.name, user.email)
     refresh_token = create_refresh_token(user.id)
     expires_in = current_app.config["JWT_ACCESS_TOKEN_EXPIRES"]
 

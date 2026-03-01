@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from flask import current_app
 
 
-def create_access_token(user_id: str, role: str) -> str:
+def create_access_token(user_id: str, role: str, name: str, email: str) -> str:
     """
     Generate a JWT access token.
 
@@ -18,6 +18,8 @@ def create_access_token(user_id: str, role: str) -> str:
     payload = {
         "sub": str(user_id),
         "role": role,
+        "name": name,
+        "email": email,
         "type": "access",
         "iat": datetime.now(timezone.utc),
         "exp": datetime.now(timezone.utc) + timedelta(seconds=expires),
