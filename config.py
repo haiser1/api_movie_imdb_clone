@@ -42,3 +42,15 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     TMDB_BASE_URL = os.getenv("TMDB_BASE_URL")
     TMDB_IMAGE_BASE = os.getenv("TMDB_IMAGE_BASE")
+
+    # Cookie config
+    COOKIE_OPTS = {
+        "httponly": True,
+        "secure": os.getenv("COOKIE_SECURE", "False").lower() == "true",
+        "samesite": "Lax",
+        "path": "/api",
+    }
+
+    FE_REDIRECT_URL = os.getenv(
+        "FE_REDIRECT_URL", "http://localhost:5173/auth/callback"
+    )

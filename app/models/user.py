@@ -27,6 +27,8 @@ class User(db.Model):
     )
     deleted_at = db.Column(db.DateTime, nullable=True)
 
+    password_hash = db.Column(db.String(255), nullable=True)
+
     # Relationships
     movies = db.relationship("Movie", back_populates="creator", lazy="dynamic")
     wishlists = db.relationship("Wishlist", back_populates="user", lazy="dynamic")

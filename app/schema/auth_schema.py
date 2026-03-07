@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import Literal, Optional
 from uuid import UUID
 
@@ -55,3 +55,18 @@ class AdminUpdateUserSchema(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     role: Optional[Literal["user", "admin"]] = None
     profile_picture: Optional[str] = Field(None, max_length=500)
+
+
+class RegisterUserSchema(BaseModel):
+    """Schema for user registration."""
+
+    name: str = Field(..., min_length=1, max_length=255)
+    email: EmailStr = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=8, max_length=255)
+
+
+class LoginUserPasswordSchema(BaseModel):
+    """Schema for user login with password."""
+
+    email: EmailStr = Field(..., min_length=5, max_length=255)
+    password: str = Field(..., min_length=8, max_length=255)

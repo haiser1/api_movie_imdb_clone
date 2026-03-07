@@ -1,4 +1,5 @@
-from app.helper.error_handler import BadRequestError
+import bcrypt
+from app.helper.error_handler import BadRequestError, ConflictError
 import jwt as pyjwt
 from flask import current_app
 
@@ -13,7 +14,9 @@ from app.helper.logger import json_logger
 from app.helper.oauth_service import get_google_client
 from app.models.user import User
 from app.schema.auth_schema import (
+    LoginUserPasswordSchema,
     RefreshTokenRequestSchema,
+    RegisterUserSchema,
     TokenResponseSchema,
     UserResponseSchema,
 )
@@ -178,3 +181,60 @@ def _generate_token_response(user: User) -> dict:
         expires_in=expires_in,
     )
     return response.model_dump()
+
+
+def register_user_service(data: RegisterUserSchema) -> dict:
+    """Register a new user with email and password."""
+    existing = User.query.filter_by(email=data.email).first()
+    if existing and existing.deleted_at:
+        raise BadRequestError(
+            message="Your account has been deactivated by admin. Please contact admin for more information.",
+            error="Account deactivated",
+        )
+    if existing:
+        raise ConflictError(
+            message="User already exists. Please login with your email and password.",
+            error="User already exists",
+        )
+
+    hashed = bcrypt.hashpw(
+        data.password.encode("utf-8"), bcrypt.gensalt()
+    ).decode("utf-8")
+
+    user = User(
+        name=data.name,
+        email=data.email,
+        password_hash=hashed,
+    )
+    db.session.add(user)
+    db.session.commit()
+
+    response = UserResponseSchema.model_validate(user)
+    return response.model_dump(mode="json")
+
+
+def login_user_password_service(data: LoginUserPasswordSchema) -> dict:
+    """Login a user with email and password."""
+    user = User.query.filter_by(email=data.email).first()
+
+    if not user or not user.password_hash:
+        raise BadRequestError(
+            message="Email or Password is invalid",
+            error="Email or Password is invalid",
+        )
+
+    if user.deleted_at:
+        raise BadRequestError(
+            message="Your account has been deactivated by admin. Please contact admin for more information.",
+            error="Account deactivated",
+        )
+
+    if not bcrypt.checkpw(
+        data.password.encode("utf-8"), user.password_hash.encode("utf-8")
+    ):
+        raise BadRequestError(
+            message="Email or Password is invalid",
+            error="Email or Password is invalid",
+        )
+
+    return _generate_token_response(user)

@@ -3,24 +3,23 @@ from flask import Blueprint, request, url_for, g, make_response, redirect
 from app.helper.auth_middleware import jwt_required
 from app.helper.base_response import response_success
 from app.helper.error_handler import handle_errors
-from app.schema.auth_schema import RefreshTokenRequestSchema
+from app.schema.auth_schema import (
+    LoginUserPasswordSchema,
+    RefreshTokenRequestSchema,
+    RegisterUserSchema,
+)
 from app.services.auth_service import (
     google_authorize_redirect,
     google_callback_service,
     refresh_token_service,
     get_current_user_service,
     logout_service,
+    register_user_service,
+    login_user_password_service,
 )
+from config import Config
 
 auth_bp = Blueprint("auth", __name__)
-
-# Cookie config
-COOKIE_OPTS = {
-    "httponly": True,
-    "secure": False,  # Set True in production (HTTPS)
-    "samesite": "Lax",
-    "path": "/api",
-}
 
 
 def _set_token_cookies(response, data: dict):
@@ -29,13 +28,13 @@ def _set_token_cookies(response, data: dict):
         "access_token",
         value=data["access_token"],
         max_age=data["expires_in"],
-        **COOKIE_OPTS,
+        **Config.COOKIE_OPTS,
     )
     response.set_cookie(
         "refresh_token",
         value=data["refresh_token"],
         max_age=604800,  # 7 days
-        **COOKIE_OPTS,
+        **Config.COOKIE_OPTS,
     )
     return response
 
@@ -76,9 +75,8 @@ def google_callback():
     Returns:
         Redirect to frontend callback page with JWT tokens set as HTTP-only cookies.
     """
-    fe_redirect_url = "http://localhost:5173/auth/callback"
     data = google_callback_service()
-    response = make_response(redirect(fe_redirect_url))
+    response = make_response(redirect(Config.FE_REDIRECT_URL))
     _set_token_cookies(response, data)
     return response
 
@@ -154,4 +152,43 @@ def logout():
     json_response, status_code = response_success("Logged out successfully")
     response = make_response(json_response, status_code)
     _clear_token_cookies(response)
+    return response
+
+
+@auth_bp.route("/register", methods=["POST"])
+@handle_errors
+def register_user_route():
+    """
+    Register a new user.
+
+    Returns:
+        JSON response with user data.
+    """
+    body_data = request.get_json(silent=True)
+    body = RegisterUserSchema(**body_data)
+    data = register_user_service(body)
+    json_response, status_code = response_success(
+        "User registered successfully", data=data, status_code=201
+    )
+    response = make_response(json_response, status_code)
+    return response
+
+
+@auth_bp.route("/email-password/login", methods=["POST"])
+@handle_errors
+def login_email_password():
+    """
+    Login with email and password.
+
+    Returns:
+        JSON response with user data.
+    """
+    body_data = request.get_json(silent=True)
+    body = LoginUserPasswordSchema(**body_data)
+    data = login_user_password_service(body)
+    json_response, status_code = response_success(
+        "User logged in successfully", data=data, status_code=200
+    )
+    response = make_response(json_response, status_code)
+    _set_token_cookies(response, data)
     return response

@@ -99,6 +99,38 @@ components:
           type: string
       required: [refresh_token]
 
+    RegisterUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          minLength: 5
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 255
+      required: [name, email, password]
+
+    LoginUserPasswordRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+          minLength: 5
+          maxLength: 255
+        password:
+          type: string
+          minLength: 8
+          maxLength: 255
+      required: [email, password]
+
     UserProfile:
       type: object
       properties:
@@ -797,6 +829,90 @@ paths:
                 $ref: "#/components/schemas/SuccessResponse"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new user with email and password
+      operationId: registerUser
+      description: |
+        Create a new user account using name, email, and password.
+        Returns the created user profile (without tokens — user must login separately).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterUserRequest"
+      responses:
+        "201":
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/UserProfile"
+        "400":
+          description: Validation error or account deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/auth/email-password/login:
+    post:
+      tags: [Auth]
+      summary: Login with email and password
+      operationId: loginEmailPassword
+      description: |
+        Authenticate a user using email and password credentials.
+        Returns JWT tokens and sets them as HTTP-only cookies.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginUserPasswordRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/TokenResponse"
+        "400":
+          description: Invalid credentials or account deactivated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "422":
+          description: Validation error
           content:
             application/json:
               schema:
