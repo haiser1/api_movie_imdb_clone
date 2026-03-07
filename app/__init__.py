@@ -13,10 +13,12 @@ from app.models import *  # noqa: F403
 from app.routes import register_routes
 from flask_swagger_ui import get_swaggerui_blueprint
 import os
+from flask_cors import CORS
 
 
 def create_app():
     app = Flask(__name__)
+    CORS(app, origins=["http://localhost:5173"], supports_credentials=True)
     app.config.from_object(Config)
 
     # Secret key required for OAuth session

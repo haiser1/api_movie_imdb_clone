@@ -104,7 +104,9 @@ def auth_headers(app, mock_user):
     with app.app_context():
         from app.helper.jwt_handler import create_access_token
 
-        token = create_access_token(mock_user.id, mock_user.role)
+        token = create_access_token(
+            mock_user.id, mock_user.role, mock_user.name, mock_user.email
+        )
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -114,5 +116,7 @@ def admin_headers(app, mock_admin):
     with app.app_context():
         from app.helper.jwt_handler import create_access_token
 
-        token = create_access_token(mock_admin.id, mock_admin.role)
+        token = create_access_token(
+            mock_admin.id, mock_admin.role, mock_admin.name, mock_admin.email
+        )
     return {"Authorization": f"Bearer {token}"}

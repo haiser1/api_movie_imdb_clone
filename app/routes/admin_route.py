@@ -1,6 +1,6 @@
-"""Admin routes — dashboard, movie management, and TMDB sync."""
+"""Admin routes — dashboard, movie management, TMDB sync, and user management."""
 
-from flask import Blueprint, request
+from flask import Blueprint, request, g
 
 from app.models.sync_log import SyncLog
 
@@ -14,6 +14,7 @@ from app.schema.movie_schema import (
     AdminMovieUpdateSchema,
     serialize_movie,
 )
+from app.schema.auth_schema import AdminCreateUserSchema, AdminUpdateUserSchema
 from app.services import admin_service, tmdb_service
 
 admin_bp = Blueprint("admin", __name__)
@@ -26,8 +27,16 @@ admin_bp = Blueprint("admin", __name__)
 @admin_required
 @handle_errors
 def get_dashboard():
-    """Get analytics dashboard data."""
-    data = admin_service.get_dashboard()
+    """Get analytics dashboard data.
+
+    Query params:
+        start_date: YYYY-MM-DD (default: 30 days ago)
+        end_date:   YYYY-MM-DD (default: today)
+    """
+    data = admin_service.get_dashboard(
+        start_date=request.args.get("start_date"),
+        end_date=request.args.get("end_date"),
+    )
     return response_success("Dashboard retrieved", data=data)
 
 
@@ -136,3 +145,68 @@ def get_last_sync():
     if not log:
         return response_success("No sync has been run yet", data=None)
     return response_success("Last sync retrieved", data=serialize_sync_log(log))
+
+
+# ==================== ADMIN USER MANAGEMENT ====================
+
+
+@admin_bp.route("/users")
+@admin_required
+@handle_errors
+def list_users():
+    """List all users with optional search and role filter.
+
+    Query params:
+        search: Partial match on name or email.
+        role: Filter by role (user|admin).
+        sort_by: Field to sort (name|email|created_at). Default: created_at.
+        order_by: Sort direction (asc|desc). Default: desc.
+    """
+    page, per_page = get_pagination_params()
+    users, meta = admin_service.list_users(
+        search=request.args.get("search"),
+        role=request.args.get("role"),
+        sort=request.args.get("sort_by", "created_at"),
+        order=request.args.get("order_by", "desc"),
+        page=page,
+        per_page=per_page,
+    )
+    return response_success(
+        "Users retrieved",
+        data=[admin_service._serialize_user(u) for u in users],
+        meta=meta,
+    )
+
+
+@admin_bp.route("/users", methods=["POST"])
+@admin_required
+@handle_errors
+def create_user():
+    """Admin creates a new user (role: user or admin)."""
+    body = AdminCreateUserSchema(**request.get_json())
+    user = admin_service.create_user(body)
+    return response_success("User created", data=user, status_code=201)
+
+
+@admin_bp.route("/users/<id>", methods=["PUT"])
+@admin_required
+@handle_errors
+def update_user(id):
+    """Admin updates a user's name, role, or profile picture.
+
+    Admin cannot change their own role.
+    """
+    body = AdminUpdateUserSchema(**request.get_json())
+    user = admin_service.update_user(
+        id, body, current_admin_id=g.current_user.get("sub")
+    )
+    return response_success("User updated", data=user)
+
+
+@admin_bp.route("/users/<id>", methods=["DELETE"])
+@admin_required
+@handle_errors
+def delete_user(id):
+    """Soft-delete a user (role=user only). Admin accounts cannot be deleted."""
+    admin_service.soft_delete_user(id, current_admin_id=g.current_user.get("sub"))
+    return response_success("User deleted")

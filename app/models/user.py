@@ -25,6 +25,7 @@ class User(db.Model):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    deleted_at = db.Column(db.DateTime, nullable=True)
 
     # Relationships
     movies = db.relationship("Movie", back_populates="creator", lazy="dynamic")

@@ -2,15 +2,16 @@
 
 from flask import g
 from app.schema.movie_schema import AdminMovieCreateSchema
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 
 from app.extensions import db
 from app.models.movie import Movie
 from app.models.user import User
 from app.models.wishlist import Wishlist
 from app.models.genre import Genre
+from app.models.sync_log import SyncLog
 from app.models.movie_genre import movie_genres
 from app.helper.error_handler import NotFoundError
 from app.helper.pagination import paginate
@@ -21,54 +22,254 @@ from app.services.movie_service import (
 )
 
 
-def get_dashboard():
-    """Get aggregate analytics for admin dashboard.
+def _parse_date_range(start_date_str=None, end_date_str=None):
+    """Parse date range strings, defaulting to last 30 days."""
+    today = date.today()
+    if end_date_str:
+        try:
+            end = datetime.strptime(end_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            end = today
+    else:
+        end = today
 
-    Uses efficient count queries instead of loading full objects.
+    if start_date_str:
+        try:
+            start = datetime.strptime(start_date_str, "%Y-%m-%d").date()
+        except ValueError:
+            start = end - timedelta(days=30)
+    else:
+        start = end - timedelta(days=30)
 
-    Returns:
-        dict with total_movies, total_users, total_wishlists,
-        movies_by_source, and popular_genres.
-    """
+    # Convert to datetime for timestamp comparisons
+    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    end_dt = datetime.combine(end, datetime.max.time(), tzinfo=timezone.utc)
+    return start, end, start_dt, end_dt
+
+
+def _get_summary(start_dt, end_dt):
+    """Build summary cards (totals + highlights) within date range."""
+    base_filter = Movie.deleted_at.is_(None)
+
     total_movies = (
         db.session.query(func.count(Movie.id))
-        .filter(Movie.deleted_at.is_(None))
+        .filter(base_filter, Movie.created_at.between(start_dt, end_dt))
+        .scalar()
+    )
+    total_users = (
+        db.session.query(func.count(User.id))
+        .filter(User.created_at.between(start_dt, end_dt))
+        .scalar()
+    )
+    total_wishlists = (
+        db.session.query(func.count(Wishlist.id))
+        .filter(Wishlist.created_at.between(start_dt, end_dt))
         .scalar()
     )
 
-    total_users = db.session.query(func.count(User.id)).scalar()
-
-    total_wishlists = db.session.query(func.count(Wishlist.id)).scalar()
-
-    # Movies by source
-    source_counts = (
-        db.session.query(Movie.source, func.count(Movie.id))
-        .filter(Movie.deleted_at.is_(None))
-        .group_by(Movie.source)
-        .all()
+    # Overall totals (all time, not date-filtered)
+    total_movies_all = (
+        db.session.query(func.count(Movie.id)).filter(base_filter).scalar()
     )
-    movies_by_source = {source: count for source, count in source_counts}
+    total_users_all = db.session.query(func.count(User.id)).scalar()
+    total_wishlists_all = db.session.query(func.count(Wishlist.id)).scalar()
 
-    # Popular genres (top 10)
-    popular_genres = (
+    # Top genre overall
+    top_genre_row = (
         db.session.query(Genre.name, func.count(movie_genres.c.movie_id))
         .join(movie_genres, Genre.id == movie_genres.c.genre_id)
         .join(Movie, Movie.id == movie_genres.c.movie_id)
-        .filter(Movie.deleted_at.is_(None))
+        .filter(base_filter)
+        .group_by(Genre.name)
+        .order_by(func.count(movie_genres.c.movie_id).desc())
+        .first()
+    )
+
+    # Latest movie
+    latest_movie = (
+        Movie.query.filter(base_filter).order_by(Movie.created_at.desc()).first()
+    )
+
+    # Average rating
+    avg_rating = (
+        db.session.query(func.avg(Movie.rating))
+        .filter(base_filter, Movie.rating.isnot(None))
+        .scalar()
+    )
+
+    return {
+        "total_movies": total_movies or 0,
+        "total_users": total_users or 0,
+        "total_wishlists": total_wishlists or 0,
+        "total_movies_all": total_movies_all or 0,
+        "total_users_all": total_users_all or 0,
+        "total_wishlists_all": total_wishlists_all or 0,
+        "top_genre": top_genre_row[0] if top_genre_row else None,
+        "latest_movie": {
+            "id": str(latest_movie.id),
+            "title": latest_movie.title,
+            "created_at": latest_movie.created_at.isoformat(),
+        }
+        if latest_movie
+        else None,
+        "average_rating": round(float(avg_rating), 2) if avg_rating else 0,
+    }
+
+
+def _get_pie_charts(start_dt, end_dt):
+    """Build pie chart datasets within date range."""
+    base_filter = (
+        Movie.deleted_at.is_(None),
+        Movie.created_at.between(start_dt, end_dt),
+    )
+
+    # Movies by genre
+    movies_by_genre = (
+        db.session.query(Genre.name, func.count(movie_genres.c.movie_id))
+        .join(movie_genres, Genre.id == movie_genres.c.genre_id)
+        .join(Movie, Movie.id == movie_genres.c.movie_id)
+        .filter(*base_filter)
         .group_by(Genre.name)
         .order_by(func.count(movie_genres.c.movie_id).desc())
         .limit(10)
         .all()
     )
 
+    # Movies by source
+    movies_by_source = (
+        db.session.query(Movie.source, func.count(Movie.id))
+        .filter(*base_filter)
+        .group_by(Movie.source)
+        .all()
+    )
+
+    # Movies by status
+    movies_by_status = (
+        db.session.query(Movie.status, func.count(Movie.id))
+        .filter(Movie.deleted_at.is_(None), Movie.created_at.between(start_dt, end_dt))
+        .group_by(Movie.status)
+        .all()
+    )
+
+    # Sync log status
+    sync_by_status = (
+        db.session.query(SyncLog.status, func.count(SyncLog.id))
+        .filter(SyncLog.created_at.between(start_dt, end_dt))
+        .group_by(SyncLog.status)
+        .all()
+    )
+
+    def to_pie_with_percentage(rows):
+        total = sum(value for _, value in rows)
+        return [
+            {
+                "label": label,
+                "value": value,
+                "percentage": round((value / total * 100), 2) if total > 0 else 0.00,
+            }
+            for label, value in rows
+        ]
+
     return {
-        "total_movies": total_movies,
-        "total_users": total_users,
-        "total_wishlists": total_wishlists,
-        "movies_by_source": movies_by_source,
-        "popular_genres": [
-            {"genre": name, "count": count} for name, count in popular_genres
-        ],
+        "movies_by_genre": to_pie_with_percentage(movies_by_genre),
+        "movies_by_source": to_pie_with_percentage(movies_by_source),
+        "movies_by_status": to_pie_with_percentage(movies_by_status),
+        "sync_by_status": to_pie_with_percentage(sync_by_status),
+    }
+
+
+def _get_column_charts(start, end, start_dt, end_dt):
+    """Build column chart datasets within date range."""
+
+    # Movies created per day
+    movies_per_day = (
+        db.session.query(
+            func.date(Movie.created_at).label("day"),
+            func.count(Movie.id),
+        )
+        .filter(Movie.deleted_at.is_(None), Movie.created_at.between(start_dt, end_dt))
+        .group_by(func.date(Movie.created_at))
+        .order_by(func.date(Movie.created_at))
+        .all()
+    )
+
+    # Wishlists created per day
+    wishlists_per_day = (
+        db.session.query(
+            func.date(Wishlist.created_at).label("day"),
+            func.count(Wishlist.id),
+        )
+        .filter(Wishlist.created_at.between(start_dt, end_dt))
+        .group_by(func.date(Wishlist.created_at))
+        .order_by(func.date(Wishlist.created_at))
+        .all()
+    )
+
+    # Users registered per day
+    users_per_day = (
+        db.session.query(
+            func.date(User.created_at).label("day"),
+            func.count(User.id),
+        )
+        .filter(User.created_at.between(start_dt, end_dt))
+        .group_by(func.date(User.created_at))
+        .order_by(func.date(User.created_at))
+        .all()
+    )
+
+    # Rating distribution (grouped into ranges)
+    rating_ranges = (
+        db.session.query(
+            case(
+                (Movie.rating < 2, "0-2"),
+                (Movie.rating < 4, "2-4"),
+                (Movie.rating < 6, "4-6"),
+                (Movie.rating < 8, "6-8"),
+                else_="8-10",
+            ).label("range"),
+            func.count(Movie.id),
+        )
+        .filter(
+            Movie.deleted_at.is_(None),
+            Movie.rating.isnot(None),
+            Movie.created_at.between(start_dt, end_dt),
+        )
+        .group_by("range")
+        .order_by("range")
+        .all()
+    )
+
+    def to_daily(rows):
+        return [{"date": str(day), "count": count} for day, count in rows]
+
+    return {
+        "movies_per_day": to_daily(movies_per_day),
+        "wishlists_per_day": to_daily(wishlists_per_day),
+        "users_per_day": to_daily(users_per_day),
+        "rating_distribution": [{"range": r, "count": c} for r, c in rating_ranges],
+    }
+
+
+def get_dashboard(start_date=None, end_date=None):
+    """Get full analytics dashboard data.
+
+    Args:
+        start_date: Start date string (YYYY-MM-DD). Defaults to 30 days ago.
+        end_date: End date string (YYYY-MM-DD). Defaults to today.
+
+    Returns:
+        dict with summary, pie_charts, and column_charts.
+    """
+    start, end, start_dt, end_dt = _parse_date_range(start_date, end_date)
+
+    return {
+        "date_range": {
+            "start_date": str(start),
+            "end_date": str(end),
+        },
+        "summary": _get_summary(start_dt, end_dt),
+        "pie_charts": _get_pie_charts(start_dt, end_dt),
+        "column_charts": _get_column_charts(start, end, start_dt, end_dt),
     }
 
 
@@ -177,4 +378,158 @@ def delete_admin_movie(movie_id):
         raise NotFoundError(error="Movie not found")
 
     movie.deleted_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+
+# ==================== ADMIN USER MANAGEMENT ====================
+
+
+def _serialize_user(user: User) -> dict:
+    """Serialize a User model to a dict."""
+    return {
+        "id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "role": user.role,
+        "profile_picture": user.profile_picture,
+        "oauth_provider": user.oauth_provider,
+        "created_at": user.created_at.isoformat(),
+        "updated_at": user.updated_at.isoformat(),
+    }
+
+
+def list_users(
+    search=None, role=None, sort="created_at", order="desc", page=1, per_page=20
+):
+    """List all users with optional search and role filter.
+
+    Args:
+        search: Partial match on name or email.
+        role: Filter by role ('user' or 'admin').
+        sort: Field to sort by ('name', 'email', 'created_at').
+        order: Sort direction ('asc' or 'desc').
+
+    Returns:
+        Tuple of (users list, pagination meta).
+    """
+    query = User.query
+
+    if search:
+        query = query.filter(
+            db.or_(User.name.ilike(f"%{search}%"), User.email.ilike(f"%{search}%"))
+        )
+    if role:
+        query = query.filter(User.role == role)
+
+    sort_col = {
+        "name": User.name,
+        "email": User.email,
+        "created_at": User.created_at,
+    }.get(sort, User.created_at)
+
+    if order == "asc":
+        query = query.order_by(sort_col.asc())
+    else:
+        query = query.order_by(sort_col.desc())
+
+    return paginate(query, page, per_page)
+
+
+def create_user(data):
+    """Admin creates a new user manually (no OAuth required).
+
+    Args:
+        data: AdminCreateUserSchema instance.
+
+    Raises:
+        ConflictError: If email already exists.
+
+    Returns:
+        Serialized user dict.
+    """
+    from app.helper.error_handler import ConflictError
+
+    existing = User.query.filter_by(email=data.email).first()
+    if existing:
+        raise ConflictError(error=f"Email '{data.email}' is already registered")
+
+    user = User(
+        name=data.name,
+        email=data.email,
+        role=data.role,
+        profile_picture=data.profile_picture,
+    )
+    db.session.add(user)
+    db.session.commit()
+    return _serialize_user(user)
+
+
+def update_user(user_id, data, current_admin_id):
+    """Admin updates a user's name, role, or profile picture.
+
+    Args:
+        user_id: Target user UUID.
+        data: AdminUpdateUserSchema instance.
+        current_admin_id: UUID string of the requesting admin.
+
+    Raises:
+        NotFoundError: If user not found.
+        ForbiddenError: If trying to demote the requesting admin themselves.
+
+    Returns:
+        Serialized user dict.
+    """
+    from app.helper.error_handler import ForbiddenError
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        raise NotFoundError(error="User not found")
+
+    # Prevent admin from changing their own role
+    if (
+        str(user.id) == str(current_admin_id)
+        and data.role is not None
+        and data.role != user.role
+    ):
+        raise ForbiddenError(error="You cannot change your own role")
+
+    if data.name is not None:
+        user.name = data.name
+    if data.role is not None:
+        user.role = data.role
+    if data.profile_picture is not None:
+        user.profile_picture = data.profile_picture
+
+    user.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return _serialize_user(user)
+
+
+def soft_delete_user(user_id, current_admin_id):
+    """Admin soft-deletes a user by setting deleted_at.
+
+    Admin cannot delete other admins — only users with role='user'.
+
+    Args:
+        user_id: Target user UUID.
+        current_admin_id: UUID string of the requesting admin.
+
+    Raises:
+        NotFoundError: If user not found.
+        ForbiddenError: If target user is an admin.
+    """
+    from app.helper.error_handler import ForbiddenError
+
+    user = User.query.filter_by(id=user_id).first()
+    if not user:
+        raise NotFoundError(error="User not found")
+
+    if user.role == "admin":
+        raise ForbiddenError(error="Cannot delete another admin account")
+
+    if not hasattr(User, "deleted_at"):
+        # deleted_at column may not exist — raise with meaningful message
+        raise NotImplementedError("User model does not have deleted_at column")
+
+    user.deleted_at = datetime.now(timezone.utc)
     db.session.commit()

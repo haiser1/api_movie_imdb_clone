@@ -1,3 +1,4 @@
+from app.helper.error_handler import BadRequestError
 import jwt as pyjwt
 from flask import current_app
 
@@ -140,6 +141,11 @@ def _find_or_create_user(user_info: dict) -> User:
 
     if not user:
         user = User.query.filter_by(email=user_info["email"]).first()
+        if user and user.deleted_at:
+            raise BadRequestError(
+                message="Your account has been deactivated by admin. Please contact admin for more information.",
+                error="Account deactivated",
+            )
         if user:
             user.oauth_provider = "google"
             user.oauth_id = str(user_info["sub"])

@@ -9,7 +9,7 @@ from app.services import genre_service
 genre_bp = Blueprint("genres", __name__)
 
 
-@genre_bp.route("/")
+@genre_bp.route("")
 @handle_errors
 def list_genres():
     """List all genres sorted alphabetically."""

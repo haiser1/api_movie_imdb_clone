@@ -22,17 +22,21 @@ def jwt_required(f):
 
     @wraps(f)
     def decorated(*args, **kwargs):
+        token = None
         auth_header = request.headers.get("Authorization")
 
-        if not auth_header or not auth_header.startswith("Bearer "):
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header.split(" ")[1]
+        else:
+            token = request.cookies.get("access_token")
+
+        if not token:
             app_logger.json_logger.warning("Missing or invalid Authorization header")
             return response_error(
                 message="Unauthorized",
                 error="Missing or invalid Authorization header",
                 status_code=401,
             )
-
-        token = auth_header.split(" ")[1]
 
         try:
             payload = decode_token(token)

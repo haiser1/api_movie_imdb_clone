@@ -19,7 +19,7 @@ movie_bp = Blueprint("movies", __name__)
 # ==================== PUBLIC ====================
 
 
-@movie_bp.route("/")
+@movie_bp.route("")
 @handle_errors
 def list_movies():
     """List all movies with search, filter, sort, pagination."""

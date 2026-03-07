@@ -255,7 +255,7 @@ curl /api/admin/sync/status -H "Authorization: Bearer <token>"
 | `make db-history` | Migration history |
 | `make db-seed` | Seed default users |
 | `make test` | Run pytest |
-| `make docker-up` | Start containers (build + up) |
+| `make docker-up` | Start containers (build + up) |^
 | `make docker-down` | Stop and remove containers |
 | `make docker-logs` | Tail container logs |
 | `make docker-clean` | Remove containers + volumes |

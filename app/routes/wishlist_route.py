@@ -12,7 +12,7 @@ from app.services import wishlist_service
 wishlist_bp = Blueprint("wishlists", __name__)
 
 
-@wishlist_bp.route("/")
+@wishlist_bp.route("", methods=["GET"])
 @jwt_required
 @handle_errors
 def list_wishlists():
@@ -24,7 +24,7 @@ def list_wishlists():
     return response_success("Wishlist retrieved", data=items, meta=meta)
 
 
-@wishlist_bp.route("/", methods=["POST"])
+@wishlist_bp.route("", methods=["POST"])
 @jwt_required
 @handle_errors
 def create_wishlist():

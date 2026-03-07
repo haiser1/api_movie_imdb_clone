@@ -10,16 +10,16 @@ class TestRefreshToken:
     """Tests for POST /refresh endpoint."""
 
     def test_refresh_token_missing_body(self, client):
-        """Should return 422 when request body is missing."""
+        """Should return 401 when request body has no refresh_token."""
         response = client.post(
             "/api/auth/refresh",
             content_type="application/json",
             data=json.dumps({}),
         )
-        assert response.status_code == 422
+        assert response.status_code == 401
         data = response.get_json()
         assert data["success"] is False
-        assert data["message"] == "Validation error"
+        assert data["error"] == "Refresh token is required"
 
     def test_refresh_token_invalid_token(self, client):
         """Should return 401 when refresh token is invalid."""
@@ -245,3 +245,85 @@ class TestErrorHandlerDecorator:
             assert status_code == 500
             assert data["success"] is False
             assert data["message"] == "Internal server error"
+
+
+class TestCookieAuth:
+    """Tests for cookie-based JWT authentication."""
+
+    def test_me_with_cookie(self, client, app, mock_user):
+        """Should return 200 when access token is in cookie instead of header."""
+        with app.app_context():
+            from app.helper.jwt_handler import create_access_token
+
+            token = create_access_token(
+                mock_user.id, mock_user.role, mock_user.name, mock_user.email
+            )
+
+        client.set_cookie("access_token", token, domain="localhost", path="/api")
+        response = client.get("/api/auth/me")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["data"]["email"] == "test@example.com"
+
+    def test_refresh_from_cookie(self, client, app, mock_user):
+        """Should refresh token when refresh_token is in cookie (no JSON body)."""
+        with app.app_context():
+            from app.helper.jwt_handler import create_refresh_token
+
+            refresh_tok = create_refresh_token(mock_user.id)
+
+        client.set_cookie("refresh_token", refresh_tok, domain="localhost", path="/api")
+        response = client.post("/api/auth/refresh", content_type="application/json")
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert "access_token" in data["data"]
+        assert "refresh_token" in data["data"]
+
+    def test_refresh_sets_cookies(self, client, app, mock_user):
+        """Should set access_token and refresh_token cookies on refresh."""
+        import json
+
+        with app.app_context():
+            from app.helper.jwt_handler import create_refresh_token
+
+            refresh_tok = create_refresh_token(mock_user.id)
+
+        response = client.post(
+            "/api/auth/refresh",
+            content_type="application/json",
+            data=json.dumps({"refresh_token": refresh_tok}),
+        )
+        assert response.status_code == 200
+
+        set_cookie_headers = response.headers.getlist("Set-Cookie")
+        cookie_names = [h.split("=")[0] for h in set_cookie_headers]
+        assert "access_token" in cookie_names
+        assert "refresh_token" in cookie_names
+
+    def test_logout_clears_cookies(self, client, app, mock_user):
+        """Should clear token cookies on logout."""
+        with app.app_context():
+            from app.helper.jwt_handler import create_access_token
+
+            token = create_access_token(
+                mock_user.id, mock_user.role, mock_user.name, mock_user.email
+            )
+
+        client.set_cookie("access_token", token, domain="localhost", path="/api")
+        response = client.post(
+            "/api/auth/logout",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.get_json()
+        assert data["success"] is True
+        assert data["message"] == "Logged out successfully"
+
+    def test_refresh_no_token_anywhere(self, client):
+        """Should return 401 when no refresh token in body or cookie."""
+        response = client.post("/api/auth/refresh", content_type="application/json")
+        assert response.status_code == 401
+        data = response.get_json()
+        assert data["error"] == "Refresh token is required"

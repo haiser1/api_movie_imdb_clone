@@ -32,6 +32,8 @@ tags:
     description: User's movie wishlist (authenticated)
   - name: Admin Movies
     description: Admin movie management
+  - name: Admin Users
+    description: Admin user management (admin only)
   - name: Admin Sync
     description: TMDB sync management (admin only)
   - name: Admin Dashboard
@@ -362,31 +364,219 @@ components:
           format: date
 
     # --- Admin Dashboard ---
-    DashboardAnalytics:
+    DashboardDateRange:
+      type: object
+      properties:
+        start_date:
+          type: string
+          format: date
+          example: "2026-02-05"
+        end_date:
+          type: string
+          format: date
+          example: "2026-03-07"
+
+    DashboardSummary:
       type: object
       properties:
         total_movies:
           type: integer
+          description: Movies created within date range
         total_users:
           type: integer
+          description: Users registered within date range
         total_wishlists:
           type: integer
-        movies_by_source:
+          description: Wishlists created within date range
+        total_movies_all:
+          type: integer
+          description: Total movies (all time)
+        total_users_all:
+          type: integer
+          description: Total users (all time)
+        total_wishlists_all:
+          type: integer
+          description: Total wishlists (all time)
+        top_genre:
+          type: string
+          nullable: true
+          description: Most popular genre by movie count
+        latest_movie:
           type: object
+          nullable: true
           properties:
-            tmdb:
-              type: integer
-            user:
-              type: integer
-        popular_genres:
+            id:
+              type: string
+              format: uuid
+            title:
+              type: string
+            created_at:
+              type: string
+              format: date-time
+        average_rating:
+          type: number
+          format: float
+          description: Average movie rating
+
+    PieChartItem:
+      type: object
+      properties:
+        label:
+          type: string
+        value:
+          type: integer
+        percentage:
+          type: number
+          format: float
+          description: Percentage of this item relative to total (2 decimal places)
+          example: 23.45
+      required: [label, value, percentage]
+
+    ColumnChartDailyItem:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        count:
+          type: integer
+      required: [date, count]
+
+    ColumnChartRangeItem:
+      type: object
+      properties:
+        range:
+          type: string
+          example: "6-8"
+        count:
+          type: integer
+      required: [range, count]
+
+    DashboardPieCharts:
+      type: object
+      properties:
+        movies_by_genre:
           type: array
           items:
-            type: object
-            properties:
-              genre:
-                type: string
-              count:
-                type: integer
+            $ref: "#/components/schemas/PieChartItem"
+          description: Distribution of movies per genre (top 10)
+        movies_by_source:
+          type: array
+          items:
+            $ref: "#/components/schemas/PieChartItem"
+          description: Movies by source (tmdb, user, admin)
+        movies_by_status:
+          type: array
+          items:
+            $ref: "#/components/schemas/PieChartItem"
+          description: Movies by status (active, archived)
+        sync_by_status:
+          type: array
+          items:
+            $ref: "#/components/schemas/PieChartItem"
+          description: Sync logs by status (success, failed)
+
+    DashboardColumnCharts:
+      type: object
+      properties:
+        movies_per_day:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnChartDailyItem"
+          description: New movies added per day
+        wishlists_per_day:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnChartDailyItem"
+          description: Wishlists created per day
+        users_per_day:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnChartDailyItem"
+          description: New user registrations per day
+        rating_distribution:
+          type: array
+          items:
+            $ref: "#/components/schemas/ColumnChartRangeItem"
+          description: Movies grouped by rating range (0-2, 2-4, 4-6, 6-8, 8-10)
+
+    DashboardAnalytics:
+      type: object
+      properties:
+        date_range:
+          $ref: "#/components/schemas/DashboardDateRange"
+        summary:
+          $ref: "#/components/schemas/DashboardSummary"
+        pie_charts:
+          $ref: "#/components/schemas/DashboardPieCharts"
+        column_charts:
+          $ref: "#/components/schemas/DashboardColumnCharts"
+      required: [date_range, summary, pie_charts, column_charts]
+
+    # --- Admin User Management ---
+    AdminUserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [user, admin]
+        profile_picture:
+          type: string
+          nullable: true
+        oauth_provider:
+          type: string
+          nullable: true
+          description: 'google, github, or null if manually created'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required: [id, name, email, role, created_at, updated_at]
+
+    AdminCreateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          maxLength: 255
+        role:
+          type: string
+          enum: [user, admin]
+          default: user
+        profile_picture:
+          type: string
+          nullable: true
+          maxLength: 500
+      required: [name, email]
+
+    AdminUpdateUserRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 255
+        role:
+          type: string
+          enum: [user, admin]
+          description: Admin cannot change their own role.
+        profile_picture:
+          type: string
+          nullable: true
+          maxLength: 500
 
     # --- Sync ---
     SyncLog:
@@ -1085,9 +1275,28 @@ paths:
       tags: [Admin Dashboard]
       summary: Get analytics dashboard
       operationId: getAdminDashboard
-      description: Returns aggregate analytics including total movies, users, wishlists, movies by source, and top genres.
+      description: |
+        Returns full analytics dashboard data including summary cards,
+        pie chart datasets (genre, source, status, sync distributions),
+        and column chart datasets (daily movies/wishlists/users, rating distribution).
+        All data is filtered by date range (defaults to last 30 days).
       security:
         - BearerAuth: []
+      parameters:
+        - name: start_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Start of date range (YYYY-MM-DD). Defaults to 30 days ago.
+          example: "2026-02-05"
+        - name: end_date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: End of date range (YYYY-MM-DD). Defaults to today.
+          example: "2026-03-07"
       responses:
         "200":
           description: Dashboard analytics
@@ -1446,6 +1655,228 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "403":
           description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ==================== ADMIN USER MANAGEMENT ====================
+  /api/admin/users:
+    get:
+      tags: [Admin Users]
+      summary: List all users
+      operationId: listAdminUsers
+      description: Returns paginated list of all users. Supports search by name/email and filter by role.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Partial match on name or email
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [user, admin]
+          description: Filter by role
+        - name: sort_by
+          in: query
+          schema:
+            type: string
+            enum: [name, email, created_at]
+            default: created_at
+        - name: order_by
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: List of users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AdminUserResponse"
+                      meta:
+                        $ref: "#/components/schemas/PaginationMeta"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      tags: [Admin Users]
+      summary: Create a new user
+      operationId: createAdminUser
+      description: |
+        Admin manually creates a user account with any role (user or admin).
+        No OAuth required — the account will have `oauth_provider: null`.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminCreateUserRequest"
+      responses:
+        "201":
+          description: User created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AdminUserResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/admin/users/{id}:
+    put:
+      tags: [Admin Users]
+      summary: Update a user
+      operationId: updateAdminUser
+      description: |
+        Admin updates a user's name, role, or profile picture.
+
+        **Restriction:** Admin cannot change their own role.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminUpdateUserRequest"
+      responses:
+        "200":
+          description: User updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/SuccessResponse"
+                  - type: object
+                    properties:
+                      data:
+                        $ref: "#/components/schemas/AdminUserResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — admin only, or attempted self role change
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    delete:
+      tags: [Admin Users]
+      summary: Soft-delete a user
+      operationId: deleteAdminUser
+      description: |
+        Soft-deletes a user account (sets `deleted_at`).
+
+        **Restrictions:**
+        - Only users with `role=user` can be deleted.
+        - Admin accounts **cannot** be deleted by other admins.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: User deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "403":
+          description: Forbidden — attempting to delete an admin account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: User not found
           content:
             application/json:
               schema:
