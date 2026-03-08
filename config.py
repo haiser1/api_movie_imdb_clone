@@ -48,7 +48,7 @@ class Config:
         "httponly": True,
         "secure": os.getenv("COOKIE_SECURE", "False").lower() == "true",
         "samesite": os.getenv("SAMESITE", "Lax"),
-        "path": "/api",
+        "path": "/",
     }
 
     FE_REDIRECT_URL = os.getenv(
