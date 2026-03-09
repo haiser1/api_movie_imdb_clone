@@ -228,26 +228,89 @@ Create a `.env` file in the project root:
 
 ## TMDB Sync
 
-Background sync with TMDB API. Two modes available:
+The application synchronizes movie data from the TMDB API to keep the local database up to date. The sync process is designed to handle API rate limits and long-running tasks efficiently by utilizing a **frontend-driven batching mechanism**.
+
+There are two primary synchronization modes:
+
+### 1. Full Sync (`mode: "full"`)
+Syncs a massive number of movies from popular endpoints (`/movie/popular`, `/movie/now_playing`, `/movie/top_rated`, `/movie/upcoming`). Because fetching thousands of movies in one request would cause timeouts, the sync is paginated:
+- The frontend makes a request for page 1.
+- The backend processes page 1 (~20 movies) and returns `status: "in_progress"` along with the `next_page` and `next_endpoint`.
+- The frontend immediately makes the next request for the subsequent page/endpoint.
+- This continues until the backend returns `status: "completed"`.
+
+### 2. Changes Sync (`mode: "changes"`)
+Syncs only movies that have changed in TMDB over the past 14 days. This is an incremental update designed to be fast and typically runs in a single synchronous call.
+
+### Sync Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant AdminUI as Admin Dashboard (Frontend)
+    participant API as Backend API (Flask)
+    participant DB as PostgreSQL DB
+    participant TMDB as TMDB API
+
+    AdminUI->>API: POST /api/admin/tmdb/sync/movies { "mode": "full" }
+    activate API
+    API->>TMDB: Fetch Genres (Initial Setup)
+    TMDB-->>API: Genres list
+    API->>DB: Update/Insert Genres
+    API->>TMDB: Fetch Page 1 of first endpoint (e.g. /movie/popular)
+    TMDB-->>API: 20 Movies
+    API->>DB: Insert/Update 20 Movies + Create SyncLog
+    API-->>AdminUI: 202 Accepted { status: "in_progress", next_page: 2, sync_log_id: "uuid" }
+    deactivate API
+
+    loop Frontend loops until completed
+        AdminUI->>API: POST /api/admin/tmdb/sync/movies { mode: "full", page: 2, sync_log_id: "uuid" }
+        activate API
+        API->>TMDB: Fetch Page 2
+        TMDB-->>API: 20 Movies
+        API->>DB: Insert/Update 20 Movies + Update SyncLog
+        API-->>AdminUI: 202 Accepted { status: "in_progress", next_page: 3 }
+        deactivate API
+    end
+
+    Note over AdminUI, TMDB: Final Batch
+    AdminUI->>API: POST /api/admin/tmdb/sync/movies { page: N, sync_log_id: "uuid" }
+    activate API
+    API->>TMDB: Fetch final page
+    TMDB-->>API: Movies
+    API->>DB: Insert/Update + Mark SyncLog "completed"
+    API-->>AdminUI: 200 OK { status: "completed" }
+    deactivate API
+
+    Note over AdminUI, API: Admin can manually stop the sync
+    AdminUI->>API: POST /api/admin/tmdb/sync/stop { sync_log_id: "uuid" }
+    API->>DB: Mark SyncLog "stopped"
+```
+
+### API Usage Example
 
 ```bash
-# Full sync — all popular + now_playing movies
-curl -X POST /api/admin/sync/movies \
-  -H "Authorization: Bearer <token>"
+# First call (Full Sync)
+curl -X POST http://localhost:5000/api/admin/tmdb/sync/movies \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "full", "max_pages": 50}'
 
-# Incremental — only changed movies (last 14 days)
-curl -X POST "/api/admin/sync/movies?mode=changes" \
-  -H "Authorization: Bearer <token>"
+# Subsequent call (driven by frontend)
+curl -X POST http://localhost:5000/api/admin/tmdb/sync/movies \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mode": "full", 
+    "endpoint": "/movie/popular", 
+    "page": 2, 
+    "sync_log_id": "<uuid_from_first_response>"
+  }'
 
-# Resume from last failed position
-curl -X POST "/api/admin/tmdb/sync/movies?resume=true" \
-  -H "Authorization: Bearer <token>"
-
-# Check sync progress
-curl /api/admin/tmdb/sync/status -H "Authorization: Bearer <token>"
-
-# Stop sync progress
-curl /api/admin/tmdb/sync/stop -H "Authorization: Bearer <token>"
+# Stop an ongoing sync
+curl -X POST http://localhost:5000/api/admin/tmdb/sync/stop \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"sync_log_id": "<uuid>"}'
 ```
 
 ---
